@@ -1,0 +1,20 @@
+name: order_paid_followup
+description: Chained workflow triggered by the internal `order.paid` event.
+trigger:
+  source: internal
+  event: order.paid
+steps:
+  - id: audit
+    action: log
+    with:
+      message: "order paid"
+      fields:
+        payment_intent: "{{ event.payload.payment_intent }}"
+  - id: crm_update
+    action: http_request
+    continue_on_error: true   # CRM sync is best effort; never block the run
+    retry: { max_attempts: 3, initial_delay: 5s }
+    with:
+      method: POST
+      url: "{{ secrets.NOTIFY_URL }}"
+      json: { event: "order.paid", payment_intent: "{{ event.payload.payment_intent }}" }

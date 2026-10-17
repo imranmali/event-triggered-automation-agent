@@ -1,0 +1,20 @@
+# Demonstrates retry and dead-letter behaviour. Send events with
+#   X-Event-Type: demo.flaky   -> fails twice, succeeds on attempt 3
+#   X-Event-Type: demo.poison  -> permanent failure -> dead-letter queue
+- name: demo_flaky
+  trigger: { source: generic, event: demo.flaky }
+  retry: { max_attempts: 5, initial_delay: 1s, max_delay: 10s }
+  steps:
+    - id: flaky_call
+      action: fail
+      with: { mode: retryable, message: "simulated upstream 503", succeed_on_attempt: 3 }
+    - id: done
+      action: log
+      with: { message: "flaky workflow recovered after {{ run.attempt }} attempts" }
+
+- name: demo_poison
+  trigger: { source: generic, event: demo.poison }
+  steps:
+    - id: reject
+      action: fail
+      with: { mode: permanent, message: "payload failed business validation" }

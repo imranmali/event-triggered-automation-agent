@@ -1,0 +1,22 @@
+name: order_created_from_queue
+description: Orders arriving on the Redis Stream `orders` are validated and forwarded.
+trigger:
+  source: orders
+  event: order.created
+steps:
+  - id: validate
+    action: transform
+    with:
+      output:
+        order_id: "{{ event.payload.order_id }}"
+        total: "{{ event.payload.items | sum(attribute='price') }}"
+  - id: reject_empty
+    action: fail
+    when: "steps.validate.output.total <= 0"
+    with: { mode: permanent, message: "order has no billable items" }
+  - id: forward
+    action: http_request
+    with:
+      method: POST
+      url: "{{ secrets.NOTIFY_URL }}"
+      json: "{{ steps.validate.output }}"

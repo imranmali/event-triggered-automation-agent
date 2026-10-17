@@ -1,0 +1,33 @@
+name: github_push_notify
+description: Notify a chat channel when commits land on main.
+trigger:
+  source: github
+  event: push
+  filter:
+    - { path: payload.ref, op: eq, value: refs/heads/main }
+    - { path: payload.commits, op: exists }
+retry:
+  max_attempts: 6
+  initial_delay: 2s
+  max_delay: 5m
+steps:
+  - id: summarize
+    action: transform
+    with:
+      output:
+        repo: "{{ event.payload.repository.full_name }}"
+        count: "{{ event.payload.commits | length }}"
+        text: >-
+          {{ event.payload.pusher.name }} pushed {{ event.payload.commits | length }} commit(s)
+          to {{ event.payload.repository.full_name }}: {{ event.payload.head_commit.message | default('') | truncate(80) }}
+
+  - id: notify
+    action: http_request
+    when: "steps.summarize.output.count > 0"
+    timeout: 15s
+    with:
+      method: POST
+      url: "{{ secrets.NOTIFY_URL }}"
+      json:
+        text: "{{ steps.summarize.output.text }}"
+        repo: "{{ steps.summarize.output.repo }}"

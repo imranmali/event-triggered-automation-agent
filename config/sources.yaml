@@ -1,0 +1,31 @@
+# Ingress sources. Each source is reachable at POST /webhooks/<name>
+# (or consumed from a Redis Stream when `redis_stream` is set).
+sources:
+  github:
+    verify: { type: github, secret_env: GITHUB_WEBHOOK_SECRET }
+    event_type: { header: X-GitHub-Event }
+    idempotency_key: { header: X-GitHub-Delivery }
+
+  stripe:
+    verify: { type: stripe, secret_env: STRIPE_WEBHOOK_SECRET, tolerance_seconds: 300 }
+    event_type: { path: type }
+    idempotency_key: { path: id }
+
+  generic:
+    verify:
+      type: hmac_sha256
+      secret_env: GENERIC_WEBHOOK_SECRET
+      header: X-Signature
+      prefix: "sha256="
+    event_type: { header: X-Event-Type, path: type, default: generic }
+    idempotency_key: { header: Idempotency-Key, path: id }
+
+  orders:
+    redis_stream:
+      stream: orders
+      group: eta
+      event_type_field: event_type
+      payload_field: payload
+      idempotency_field: order_id
+      max_deliveries: 5
+      claim_idle: 60s
