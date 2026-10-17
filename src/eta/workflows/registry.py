@@ -49,7 +49,9 @@ class WorkflowRegistry:
     def get(self, name: str) -> WorkflowSpec | None:
         return self._by_name.get(name)
 
-    def match(self, source: str, event_type: str, payload: Any, headers: Mapping[str, str]) -> list[WorkflowRef]:
+    def match(
+        self, source: str, event_type: str, payload: Any, headers: Mapping[str, str]
+    ) -> list[WorkflowRef]:
         event = {"source": source, "type": event_type, "payload": payload, "headers": dict(headers)}
         return [
             to_ref(wf)
@@ -82,7 +84,9 @@ def parse_workflow(data: Any, actions: ActionRegistry, origin: str = "<inline>")
     return wf
 
 
-def parse_sources(data: Any, origin: str = "sources.yaml", *, environ: Mapping[str, str] | None = None) -> dict[str, SourceSpec]:
+def parse_sources(
+    data: Any, origin: str = "sources.yaml", *, environ: Mapping[str, str] | None = None
+) -> dict[str, SourceSpec]:
     env = os.environ if environ is None else environ
     raw = (data or {}).get("sources", {}) if isinstance(data, dict) else None
     if not isinstance(raw, dict):

@@ -120,7 +120,9 @@ def build_router(
             verify(source.verify, body, headers, secret)
         except SignatureError as exc:
             metrics.EVENTS_RECEIVED.labels(source_name, "webhook", "rejected").inc()
-            log.warning("webhook signature rejected", extra={"source": source_name, "reason": str(exc)})
+            log.warning(
+                "webhook signature rejected", extra={"source": source_name, "reason": str(exc)}
+            )
             raise HTTPException(401, "invalid signature") from None
 
         try:

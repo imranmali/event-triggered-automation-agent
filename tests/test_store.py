@@ -104,7 +104,9 @@ async def test_step_checkpoints_and_attempt_counting(store: Store):
     assert c2.steps["a"].status == StepStatus.FAILED
     assert c2.steps["a"].attempts == 1
     assert await store.start_step(c2.run.id, c2.lease_token, "a") == 2
-    await store.finish_step(c2.run.id, c2.lease_token, "a", status=StepStatus.SUCCEEDED, output={"x": 1})
+    await store.finish_step(
+        c2.run.id, c2.lease_token, "a", status=StepStatus.SUCCEEDED, output={"x": 1}
+    )
     steps = await store.get_steps(c.run.id)
     assert steps[0].output == {"x": 1} and steps[0].attempts == 2
 
@@ -117,7 +119,9 @@ async def test_expired_lease_detection_requires_expiry(store: Store):
     await store.start_step(c.run.id, c.lease_token, "a")
     assert await store.find_expired_leases() == []
     with pytest.raises(LeaseLostError):  # not expired yet: reaper must not steal it
-        await store.schedule_retry(c.run.id, c.lease_token, delay=0, error="x", require_expired=True)
+        await store.schedule_retry(
+            c.run.id, c.lease_token, delay=0, error="x", require_expired=True
+        )
 
     now[0] += timedelta(seconds=11)
     [lease] = await store.find_expired_leases()

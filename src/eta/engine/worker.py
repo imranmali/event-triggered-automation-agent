@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 from dataclasses import dataclass
 
@@ -65,7 +66,10 @@ class Worker:
     # ------------------------------------------------------------- main loop
 
     async def run(self, stop: asyncio.Event) -> None:
-        log.info("worker started", extra={"worker_id": self.config.worker_id, "concurrency": self.config.concurrency})
+        log.info(
+            "worker started",
+            extra={"worker_id": self.config.worker_id, "concurrency": self.config.concurrency},
+        )
         reaper = asyncio.create_task(self._reaper_loop(stop), name="eta-reaper")
         error_backoff = self.config.poll_interval
         try:
@@ -98,11 +102,11 @@ class Worker:
         for claimed in runs:
             task = asyncio.create_task(self._process(claimed), name=f"run-{claimed.run.id}")
             self._inflight[claimed.run.id] = task
-            task.add_done_callback(lambda _t, rid=claimed.run.id: self._on_done(rid))
+            task.add_done_callback(functools.partial(self._on_done, claimed.run.id))
         metrics.INFLIGHT.set(self.inflight)
         return len(runs)
 
-    def _on_done(self, run_id: str) -> None:
+    def _on_done(self, run_id: str, _task: asyncio.Task[None] | None = None) -> None:
         self._inflight.pop(run_id, None)
         metrics.INFLIGHT.set(self.inflight)
         self._wakeup.set()  # a slot freed up
@@ -111,7 +115,9 @@ class Worker:
         self._wakeup.clear()
         waiters = [asyncio.ensure_future(self._wakeup.wait()), asyncio.ensure_future(stop.wait())]
         try:
-            await asyncio.wait(waiters, timeout=self.config.poll_interval, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait(
+                waiters, timeout=self.config.poll_interval, return_when=asyncio.FIRST_COMPLETED
+            )
         finally:
             for w in waiters:
                 w.cancel()
@@ -124,7 +130,10 @@ class Worker:
     async def _drain(self) -> None:
         if not self._inflight:
             return
-        log.info("draining in-flight runs", extra={"inflight": self.inflight, "grace": self.config.shutdown_grace_seconds})
+        log.info(
+            "draining in-flight runs",
+            extra={"inflight": self.inflight, "grace": self.config.shutdown_grace_seconds},
+        )
         tasks = list(self._inflight.values())
         _done, pending = await asyncio.wait(tasks, timeout=self.config.shutdown_grace_seconds)
         for task in pending:
@@ -137,7 +146,9 @@ class Worker:
     async def _process(self, claimed: ClaimedRun) -> None:
         run = claimed.run
         state = ExecutionState()
-        with log_context(run_id=run.id, workflow=run.workflow_name, event_id=run.event_id, attempt=run.attempts):
+        with log_context(
+            run_id=run.id, workflow=run.workflow_name, event_id=run.event_id, attempt=run.attempts
+        ):
             exec_task = asyncio.current_task()
             assert exec_task is not None
             lease_lost = asyncio.Event()
@@ -169,7 +180,9 @@ class Worker:
         while True:
             await asyncio.sleep(self.config.heartbeat_interval)
             try:
-                await self.store.heartbeat(claimed.run.id, claimed.lease_token, self.config.lease_seconds)
+                await self.store.heartbeat(
+                    claimed.run.id, claimed.lease_token, self.config.lease_seconds
+                )
             except LeaseLostError:
                 lease_lost.set()
                 exec_task.cancel()
@@ -180,7 +193,9 @@ class Worker:
     async def _release(self, claimed: ClaimedRun, state: ExecutionState) -> None:
         try:
             await asyncio.shield(
-                self.store.release_run(claimed.run.id, claimed.lease_token, step_id=state.current_step)
+                self.store.release_run(
+                    claimed.run.id, claimed.lease_token, step_id=state.current_step
+                )
             )
             metrics.RUNS_FINISHED.labels(claimed.run.workflow_name, "released").inc()
             log.info("run released back to queue (shutdown)", extra={"step": state.current_step})
@@ -214,7 +229,10 @@ class Worker:
     async def _recover(self, lease: ExpiredLease) -> None:
         wf = WorkflowSpec.model_validate(lease.workflow.spec)
         policy = wf.retry_for(lease.current_step)
-        error = f"lease expired: worker {lease.lease_owner} lost while running step {lease.current_step}"
+        error = (
+            f"lease expired: worker {lease.lease_owner} lost "
+            f"while running step {lease.current_step}"
+        )
         with log_context(run_id=lease.run_id, workflow=wf.name):
             if lease.current_step is not None and policy.exhausted(lease.step_attempts):
                 await self.store.dead_letter_run(
@@ -238,7 +256,9 @@ class Worker:
                 step_id=lease.current_step,
                 require_expired=True,
             )
-            log.warning("expired lease recovered; retry scheduled", extra={"delay": round(delay, 3)})
+            log.warning(
+                "expired lease recovered; retry scheduled", extra={"delay": round(delay, 3)}
+            )
 
     # ----------------------------------------------------------------- tests
 

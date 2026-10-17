@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
@@ -53,14 +54,16 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.plugin_modules.split(",") if m.strip()]
 
 
-def load_secrets(environ: dict[str, str] | None = None) -> dict[str, str]:
+def load_secrets(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Secrets visible to workflow templates as ``secrets.NAME``.
 
     Only variables explicitly prefixed with ``ETA_SECRET_`` are exposed, so a
     workflow author can never read arbitrary process environment.
     """
     env = os.environ if environ is None else environ
-    return {k[len(SECRET_ENV_PREFIX) :]: v for k, v in env.items() if k.startswith(SECRET_ENV_PREFIX)}
+    return {
+        k[len(SECRET_ENV_PREFIX) :]: v for k, v in env.items() if k.startswith(SECRET_ENV_PREFIX)
+    }
 
 
 @lru_cache(maxsize=1)

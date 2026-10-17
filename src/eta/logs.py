@@ -11,9 +11,14 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-_log_context: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
-    "eta_log_context", default={}
+_log_context: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "eta_log_context", default=None
 )
+
+
+def current_context() -> dict[str, Any]:
+    return _log_context.get() or {}
+
 
 _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime"}
 
@@ -21,7 +26,7 @@ _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"mess
 @contextmanager
 def log_context(**fields: Any) -> Iterator[None]:
     """Attach fields (run_id, event_id, ...) to every log line in this scope."""
-    token = _log_context.set({**_log_context.get(), **fields})
+    token = _log_context.set({**current_context(), **fields})
     try:
         yield
     finally:
@@ -35,7 +40,7 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
-            **_log_context.get(),
+            **current_context(),
         }
         for key, value in record.__dict__.items():
             if key not in _RESERVED and not key.startswith("_"):
@@ -48,9 +53,13 @@ class JsonFormatter(logging.Formatter):
 class ContextTextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
-        extras = {**_log_context.get()}
+        extras = dict(current_context())
         extras.update(
-            {k: v for k, v in record.__dict__.items() if k not in _RESERVED and not k.startswith("_")}
+            {
+                k: v
+                for k, v in record.__dict__.items()
+                if k not in _RESERVED and not k.startswith("_")
+            }
         )
         if extras:
             base += " " + " ".join(f"{k}={v}" for k, v in extras.items())

@@ -55,7 +55,11 @@ class Runtime:
         http = http or httpx.AsyncClient(follow_redirects=False)
         ingest = IngestService(store, config.workflows)
         executor = Executor(
-            store, actions, http=http, emit=ingest.emit, secrets=load_secrets(environ and dict(environ))
+            store,
+            actions,
+            http=http,
+            emit=ingest.emit,
+            secrets=load_secrets(environ),
         )
         worker = Worker(
             store,
@@ -85,7 +89,9 @@ class Runtime:
         )
 
     def start_worker(self) -> None:
-        self._background.append(asyncio.create_task(self.worker.run(self.stop_event), name="eta-worker"))
+        self._background.append(
+            asyncio.create_task(self.worker.run(self.stop_event), name="eta-worker")
+        )
 
     def start_consumers(self) -> int:
         from redis.asyncio import Redis
@@ -101,7 +107,9 @@ class Runtime:
                 redis, source, self.ingest, self.store, consumer_name=self.settings.worker_id
             )
             self._background.append(
-                asyncio.create_task(consumer.run(self.stop_event), name=f"eta-consumer-{source.name}")
+                asyncio.create_task(
+                    consumer.run(self.stop_event), name=f"eta-consumer-{source.name}"
+                )
             )
         return len(queue_sources)
 

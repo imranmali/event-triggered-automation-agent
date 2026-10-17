@@ -13,7 +13,7 @@ import json
 import re
 from typing import Any
 
-from jinja2 import StrictUndefined, TemplateError
+from jinja2 import StrictUndefined, TemplateError, Undefined
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from eta.errors import ConfigError, PermanentError
@@ -65,7 +65,10 @@ def _render(value: Any, context: dict[str, Any]) -> Any:
             return value
         expr = _is_single_expression(value)
         if expr is not None:
-            return _env.compile_expression(expr, undefined_to_none=False)(**context)
+            result = _env.compile_expression(expr, undefined_to_none=False)(**context)
+            if isinstance(result, Undefined):
+                str(result)  # StrictUndefined raises UndefinedError here
+            return result
         return _env.from_string(value).render(**context)
     if isinstance(value, dict):
         return {_render(k, context): _render(v, context) for k, v in value.items()}

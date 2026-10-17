@@ -74,9 +74,7 @@ class ActionRegistry:
             raise ConfigError(f"action {name!r} already registered")
         self._actions[name] = ActionDef(name, fn, params, description or (fn.__doc__ or "").strip())
 
-    def action(
-        self, name: str, *, params: type[BaseModel] | None = None
-    ) -> Callable[[F], F]:
+    def action(self, name: str, *, params: type[BaseModel] | None = None) -> Callable[[F], F]:
         def decorator(fn: F) -> F:
             self.register(name, fn, params=params)
             return fn

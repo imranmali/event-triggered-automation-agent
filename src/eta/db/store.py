@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, and_, delete, event, func, insert, or_, select, update
+from sqlalchemy import Select, Table, and_, delete, event, func, insert, or_, select, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
@@ -115,7 +115,7 @@ class Store:
         async with self.engine.begin() as conn:
             yield conn
 
-    def _insert_ignore(self, table: t.Table) -> Any:
+    def _insert_ignore(self, table: Table) -> Any:
         dialect_insert = postgresql.insert if self.dialect == "postgresql" else sqlite.insert
         return dialect_insert(table)
 
@@ -261,7 +261,9 @@ class Store:
             claimed_runs = [_run(r) for r in rows]
             ids = [r.id for r in claimed_runs]
             for r in claimed_runs:
-                await self._history(conn, r.id, "claimed", {"worker": worker_id, "attempt": r.attempts})
+                await self._history(
+                    conn, r.id, "claimed", {"worker": worker_id, "attempt": r.attempts}
+                )
 
             ev_rows = (
                 await conn.execute(
@@ -323,10 +325,8 @@ class Store:
         ]
         if require_expired:
             conds.append(t.runs.c.lease_expires_at < now)
-        result = await conn.execute(
-            update(t.runs).where(*conds).values(updated_at=now, **values)
-        )
-        if result.rowcount != 1:  # type: ignore[attr-defined]
+        result = await conn.execute(update(t.runs).where(*conds).values(updated_at=now, **values))
+        if result.rowcount != 1:
             raise LeaseLostError(f"lease lost for run {run_id}")
 
     async def heartbeat(self, run_id: str, token: str, lease_seconds: float) -> None:
@@ -376,7 +376,9 @@ class Store:
                         finished_at=None,
                     )
                 )
-            await self._history(conn, run_id, "step_started", {"step": step_id, "attempt": attempts})
+            await self._history(
+                conn, run_id, "step_started", {"step": step_id, "attempt": attempts}
+            )
             return attempts
 
     async def finish_step(
@@ -398,7 +400,7 @@ class Store:
                 .where(t.step_results.c.run_id == run_id, t.step_results.c.step_id == step_id)
                 .values(**values)
             )
-            if result.rowcount == 0:  # type: ignore[attr-defined]
+            if result.rowcount == 0:
                 # Skipped steps are never "started".
                 await conn.execute(
                     insert(t.step_results).values(
@@ -521,8 +523,11 @@ class Store:
                         t.step_results.c.step_id == step_id,
                         t.step_results.c.status == StepStatus.RUNNING,
                     )
-                    .values(attempts=t.step_results.c.attempts - 1, status=StepStatus.FAILED,
-                            error="released during shutdown")
+                    .values(
+                        attempts=t.step_results.c.attempts - 1,
+                        status=StepStatus.FAILED,
+                        error="released during shutdown",
+                    )
                 )
             await self._history(conn, run_id, "released", {"step": step_id})
 
@@ -578,9 +583,11 @@ class Store:
             result = await conn.execute(
                 update(t.runs)
                 .where(t.runs.c.id == run_id, t.runs.c.status == RunStatus.QUEUED)
-                .values(status=RunStatus.CANCELLED, finished_at=self.clock(), updated_at=self.clock())
+                .values(
+                    status=RunStatus.CANCELLED, finished_at=self.clock(), updated_at=self.clock()
+                )
             )
-            if result.rowcount != 1:  # type: ignore[attr-defined]
+            if result.rowcount != 1:
                 return False
             await self._history(conn, run_id, "cancelled", {})
             return True
@@ -621,7 +628,9 @@ class Store:
                 values["workflow_version"] = workflow.version
             if mode == ReplayMode.RESTART:
                 values["generation"] = t.runs.c.generation + 1
-                await conn.execute(delete(t.step_results).where(t.step_results.c.run_id == dl.run_id))
+                await conn.execute(
+                    delete(t.step_results).where(t.step_results.c.run_id == dl.run_id)
+                )
             else:
                 await conn.execute(
                     delete(t.step_results).where(
@@ -634,7 +643,7 @@ class Store:
                 .where(t.runs.c.id == dl.run_id, t.runs.c.status == RunStatus.DEAD_LETTERED)
                 .values(**values)
             )
-            if result.rowcount != 1:  # type: ignore[attr-defined]
+            if result.rowcount != 1:
                 raise ValueError(f"run {dl.run_id} is not dead-lettered")
             await conn.execute(
                 update(t.dead_letters)
@@ -649,7 +658,11 @@ class Store:
                 conn,
                 dl.run_id,
                 "replayed",
-                {"dlq_id": dlq_id, "mode": mode.value, "workflow_version": values.get("workflow_version")},
+                {
+                    "dlq_id": dlq_id,
+                    "mode": mode.value,
+                    "workflow_version": values.get("workflow_version"),
+                },
             )
             return str(dl.run_id)
 
@@ -657,16 +670,20 @@ class Store:
         async with self.tx() as conn:
             result = await conn.execute(
                 update(t.dead_letters)
-                .where(t.dead_letters.c.id == dlq_id, t.dead_letters.c.status == DeadLetterStatus.OPEN)
+                .where(
+                    t.dead_letters.c.id == dlq_id, t.dead_letters.c.status == DeadLetterStatus.OPEN
+                )
                 .values(status=DeadLetterStatus.DISCARDED, resolved_at=self.clock())
             )
-            return bool(result.rowcount == 1)  # type: ignore[attr-defined]
+            return bool(result.rowcount == 1)
 
     # ---------------------------------------------------------------- reads
 
     async def get_event(self, event_id: str) -> Event | None:
         async with self.engine.connect() as conn:
-            row = (await conn.execute(select(t.events).where(t.events.c.id == event_id))).one_or_none()
+            row = (
+                await conn.execute(select(t.events).where(t.events.c.id == event_id))
+            ).one_or_none()
         return _event(row) if row else None
 
     async def list_events(
@@ -692,7 +709,9 @@ class Store:
         limit: int = 50,
         offset: int = 0,
     ) -> list[Run]:
-        q: Select[Any] = select(t.runs).order_by(t.runs.c.created_at.desc()).limit(limit).offset(offset)
+        q: Select[Any] = (
+            select(t.runs).order_by(t.runs.c.created_at.desc()).limit(limit).offset(offset)
+        )
         if status:
             q = q.where(t.runs.c.status == status)
         if workflow:
@@ -739,7 +758,12 @@ class Store:
         limit: int = 50,
         offset: int = 0,
     ) -> list[DeadLetter]:
-        q = select(t.dead_letters).order_by(t.dead_letters.c.created_at.desc()).limit(limit).offset(offset)
+        q = (
+            select(t.dead_letters)
+            .order_by(t.dead_letters.c.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
         if status:
             q = q.where(t.dead_letters.c.status == status)
         if workflow:
@@ -751,7 +775,7 @@ class Store:
         """Queue depth / status counts, used for metrics and the admin API."""
         now = self.clock()
         async with self.engine.connect() as conn:
-            by_status = dict(
+            by_status: dict[str, int] = dict(
                 (
                     await conn.execute(
                         select(t.runs.c.status, func.count()).group_by(t.runs.c.status)
@@ -810,7 +834,12 @@ class Store:
 
 
 def _cleared_lease() -> dict[str, Any]:
-    return {"lease_owner": None, "lease_token": None, "lease_expires_at": None, "current_step": None}
+    return {
+        "lease_owner": None,
+        "lease_token": None,
+        "lease_expires_at": None,
+        "current_step": None,
+    }
 
 
 def _run(row: Any) -> Run:

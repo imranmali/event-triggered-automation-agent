@@ -91,7 +91,7 @@ class RedisStreamConsumer:
         log.info("redis stream consumer stopped", extra={"stream": self.cfg.stream})
 
     async def poll_once(self) -> int:
-        response = await self.redis.xreadgroup(
+        response: Any = await self.redis.xreadgroup(
             self.cfg.group,
             self.consumer,
             {self.cfg.stream: ">"},
@@ -152,7 +152,9 @@ class RedisStreamConsumer:
             await self.redis.xack(stream, self.cfg.group, msg_id)
             metrics.QUEUE_MESSAGES.labels(stream, "poison").inc()
             metrics.DEAD_LETTERED.labels("ingress", "poison_message").inc()
-            log.error("poison message dead-lettered", extra={"message_id": msg_id, "error": str(exc)})
+            log.error(
+                "poison message dead-lettered", extra={"message_id": msg_id, "error": str(exc)}
+            )
             return
 
         try:
@@ -167,7 +169,9 @@ class RedisStreamConsumer:
         except Exception:
             # Not acknowledged: stays pending and is retried via XAUTOCLAIM.
             metrics.QUEUE_MESSAGES.labels(stream, "error").inc()
-            log.exception("failed to ingest stream message; will be redelivered", extra={"message_id": msg_id})
+            log.exception(
+                "failed to ingest stream message; will be redelivered", extra={"message_id": msg_id}
+            )
             return
         await self.redis.xack(stream, self.cfg.group, msg_id)
         metrics.QUEUE_MESSAGES.labels(stream, "duplicate" if result.duplicate else "ingested").inc()

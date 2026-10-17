@@ -83,7 +83,12 @@ def test_step_retry_override():
             retry={"max_attempts": 4},
             steps=[
                 {"id": "a", "action": "log", "with": {"message": "x"}},
-                {"id": "b", "action": "log", "with": {"message": "x"}, "retry": {"max_attempts": 9}},
+                {
+                    "id": "b",
+                    "action": "log",
+                    "with": {"message": "x"},
+                    "retry": {"max_attempts": 9},
+                },
             ],
         ),
         default_registry,
@@ -101,11 +106,17 @@ def test_step_retry_override():
             {"steps": [{"id": "a", "action": "log", "with": {"message": "x"}}] * 2},
             "duplicate step id",
         ),
-        ({"steps": [{"id": "a", "action": "log", "with": {"message": "{{ broken"}}]}, "invalid template"),
+        (
+            {"steps": [{"id": "a", "action": "log", "with": {"message": "{{ broken"}}]},
+            "invalid template",
+        ),
         ({"steps": []}, "at least 1"),
         ({"trigger": []}, "at least 1"),
         ({"unknown_key": 1}, "Extra inputs"),
-        ({"steps": [{"id": "a", "action": "log", "when": "{{ (", "with": {"message": "x"}}]}, "invalid template"),
+        (
+            {"steps": [{"id": "a", "action": "log", "when": "{{ (", "with": {"message": "x"}}]},
+            "invalid template",
+        ),
     ],
 )
 def test_invalid_workflows(override, message):
@@ -155,9 +166,17 @@ def test_trigger_glob_matching():
         ({"path": "payload.labels", "op": "contains", "value": "bug"}, {"labels": ["bug"]}, True),
         ({"path": "payload.x", "op": "exists"}, {"x": None}, True),
         ({"path": "payload.x", "op": "not_exists"}, {}, True),
-        ({"path": "payload.ref", "op": "startswith", "value": "refs/tags/"}, {"ref": "refs/tags/v1"}, True),
+        (
+            {"path": "payload.ref", "op": "startswith", "value": "refs/tags/"},
+            {"ref": "refs/tags/v1"},
+            True,
+        ),
         ({"path": "payload.ref", "op": "matches", "value": r"^v\d+$"}, {"ref": "v12"}, True),
-        ({"path": "payload.items.1.sku", "op": "eq", "value": "B"}, {"items": [{"sku": "A"}, {"sku": "B"}]}, True),
+        (
+            {"path": "payload.items.1.sku", "op": "eq", "value": "B"},
+            {"items": [{"sku": "A"}, {"sku": "B"}]},
+            True,
+        ),
         ({"path": "payload.missing", "op": "eq", "value": None}, {}, False),
     ],
 )

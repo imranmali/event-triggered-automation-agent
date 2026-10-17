@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -74,15 +75,21 @@ def build_admin_router(rt: Runtime) -> APIRouter:
 
     @r.get("/actions")
     async def list_actions() -> Any:
-        return [{"name": n, "description": rt.actions.get(n).description} for n in rt.actions.names()]
+        return [
+            {"name": n, "description": rt.actions.get(n).description} for n in rt.actions.names()
+        ]
 
     @r.post("/events", status_code=202)
     async def publish(body: PublishEvent, response: Response) -> Any:
-        key = body.idempotency_key or "sha256:" + hashlib.sha256(
-            json.dumps(
-                {"t": body.event_type, "p": body.payload}, sort_keys=True, default=str
-            ).encode()
-        ).hexdigest()
+        key = (
+            body.idempotency_key
+            or "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    {"t": body.event_type, "p": body.payload}, sort_keys=True, default=str
+                ).encode()
+            ).hexdigest()
+        )
         result = await rt.ingest.ingest(
             source=body.source,
             event_type=body.event_type,
@@ -100,7 +107,9 @@ def build_admin_router(rt: Runtime) -> APIRouter:
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> Any:
-        return [_encode(e) for e in await store.list_events(source=source, limit=limit, offset=offset)]
+        return [
+            _encode(e) for e in await store.list_events(source=source, limit=limit, offset=offset)
+        ]
 
     @r.get("/events/{event_id}")
     async def get_event(event_id: str) -> Any:
@@ -147,7 +156,9 @@ def build_admin_router(rt: Runtime) -> APIRouter:
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> Any:
-        items = await store.list_dead_letters(status=status, workflow=workflow, limit=limit, offset=offset)
+        items = await store.list_dead_letters(
+            status=status, workflow=workflow, limit=limit, offset=offset
+        )
         return [_encode(d) for d in items]
 
     @r.get("/dlq/{dlq_id}")
@@ -271,10 +282,9 @@ def create_app(
 
     @app.get("/metrics", tags=["ops"])
     async def prometheus() -> Response:
-        try:
+        # Scraping must keep working (process metrics) even if the DB hiccups.
+        with contextlib.suppress(Exception):
             await refresh_gauges(rt)
-        except Exception:  # metrics must not fail because the DB hiccuped
-            pass
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app

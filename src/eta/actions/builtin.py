@@ -83,18 +83,16 @@ async def http_request(p: HttpParams, ctx: ActionContext) -> dict[str, Any]:
     except httpx.TransportError as exc:
         raise RetryableError(f"transport error calling {p.url}: {exc!r}") from exc
 
-    ok = (
-        response.status_code in p.expected_status
-        if p.expected_status
-        else response.is_success
-    )
+    ok = response.status_code in p.expected_status if p.expected_status else response.is_success
     body = _decode_body(response)
     if ok:
         return {"status": response.status_code, "body": body}
     snippet = str(body)[:500]
     message = f"{p.method} {p.url} -> HTTP {response.status_code}: {snippet}"
     if response.status_code in RETRYABLE_STATUS or response.status_code >= 500:
-        raise RetryableError(message, retry_after=parse_retry_after(response.headers.get("retry-after")))
+        raise RetryableError(
+            message, retry_after=parse_retry_after(response.headers.get("retry-after"))
+        )
     raise PermanentError(message)
 
 
@@ -160,12 +158,12 @@ async def emit_event(p: EmitParams, ctx: ActionContext) -> dict[str, Any]:
 
 
 def register_builtins(registry: ActionRegistry) -> None:
-    registry.register("http_request", http_request, params=HttpParams)  # type: ignore[arg-type]
-    registry.register("transform", transform, params=TransformParams)  # type: ignore[arg-type]
-    registry.register("log", log_action, params=LogParams)  # type: ignore[arg-type]
-    registry.register("delay", delay, params=DelayParams)  # type: ignore[arg-type]
-    registry.register("fail", fail, params=FailParams)  # type: ignore[arg-type]
-    registry.register("emit_event", emit_event, params=EmitParams)  # type: ignore[arg-type]
+    registry.register("http_request", http_request, params=HttpParams)
+    registry.register("transform", transform, params=TransformParams)
+    registry.register("log", log_action, params=LogParams)
+    registry.register("delay", delay, params=DelayParams)
+    registry.register("fail", fail, params=FailParams)
+    registry.register("emit_event", emit_event, params=EmitParams)
 
 
 register_builtins(default_registry)

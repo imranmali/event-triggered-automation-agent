@@ -37,7 +37,9 @@ def _settings() -> Settings:
     return settings
 
 
-async def _run_until_signal(start: Callable[[], None], shutdown: Callable[[], Awaitable[None]], stop: asyncio.Event) -> None:
+async def _run_until_signal(
+    start: Callable[[], None], shutdown: Callable[[], Awaitable[None]], stop: asyncio.Event
+) -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
@@ -162,7 +164,9 @@ def validate() -> None:
     except ConfigError as exc:
         click.secho(f"✗ {exc}", fg="red", err=True)
         sys.exit(1)
-    click.secho(f"✓ {len(cfg.sources)} source(s), {len(cfg.workflows)} workflow(s) valid", fg="green")
+    click.secho(
+        f"✓ {len(cfg.sources)} source(s), {len(cfg.workflows)} workflow(s) valid", fg="green"
+    )
     for src in cfg.sources.values():
         kind = "redis_stream" if src.redis_stream else "webhook"
         click.echo(f"  source   {src.name:<24} {kind:<13} verify={src.verify.type}")

@@ -116,7 +116,9 @@ class Executor:
                 try:
                     should_run = evaluate_condition(step.when, context)
                 except StepError as exc:
-                    return await self._dead_letter(claimed, wf, step.id, "permanent_error", str(exc), started=False)
+                    return await self._dead_letter(
+                        claimed, wf, step.id, "permanent_error", str(exc), started=False
+                    )
                 if not should_run:
                     await self.store.finish_step(run.id, token, step.id, status=StepStatus.SKIPPED)
                     context["steps"][step.id] = {"status": StepStatus.SKIPPED.value, "output": None}
@@ -135,7 +137,9 @@ class Executor:
                     continue
                 return outcome
             self._observe(wf, step, started, "ok")
-            await self.store.finish_step(run.id, token, step.id, status=StepStatus.SUCCEEDED, output=output)
+            await self.store.finish_step(
+                run.id, token, step.id, status=StepStatus.SUCCEEDED, output=output
+            )
             state.current_step = None
             context["steps"][step.id] = {"status": StepStatus.SUCCEEDED.value, "output": output}
 
@@ -199,20 +203,36 @@ class Executor:
             delay = policy.delay(attempt, rng=self.rng)
             if exc.retry_after is not None:
                 delay = max(delay, min(exc.retry_after, MAX_RETRY_AFTER_SECONDS))
-            await self.store.schedule_retry(run.id, token, delay=delay, error=error, step_id=step.id)
+            await self.store.schedule_retry(
+                run.id, token, delay=delay, error=error, step_id=step.id
+            )
             metrics.RETRIES_SCHEDULED.labels(wf.name, step.id).inc()
             metrics.RUNS_FINISHED.labels(wf.name, Outcome.RETRY).inc()
-            log.warning("step failed; retry scheduled", extra={"step": step.id, "delay": round(delay, 3), "error": str(exc)})
+            log.warning(
+                "step failed; retry scheduled",
+                extra={"step": step.id, "delay": round(delay, 3), "error": str(exc)},
+            )
             return Outcome.RETRY
 
         reason = "retries_exhausted" if exc.retryable else "permanent_error"
         if step.continue_on_error:
             output = {"error": str(exc), "reason": reason}
             await self.store.finish_step(
-                run.id, token, step.id, status=StepStatus.FAILED_CONTINUED, output=output, error=error
+                run.id,
+                token,
+                step.id,
+                status=StepStatus.FAILED_CONTINUED,
+                output=output,
+                error=error,
             )
-            context["steps"][step.id] = {"status": StepStatus.FAILED_CONTINUED.value, "output": output}
-            log.warning("step failed; continuing (continue_on_error)", extra={"step": step.id, "error": str(exc)})
+            context["steps"][step.id] = {
+                "status": StepStatus.FAILED_CONTINUED.value,
+                "output": output,
+            }
+            log.warning(
+                "step failed; continuing (continue_on_error)",
+                extra={"step": step.id, "error": str(exc)},
+            )
             return None
         return await self._dead_letter(claimed, wf, step.id, reason, error, started=True)
 
@@ -235,7 +255,10 @@ class Executor:
         )
         metrics.DEAD_LETTERED.labels("run", reason).inc()
         metrics.RUNS_FINISHED.labels(wf.name, Outcome.DEAD_LETTERED).inc()
-        log.error("run dead-lettered", extra={"step": step_id, "reason": reason, "error": error, "dlq_id": dlq_id})
+        log.error(
+            "run dead-lettered",
+            extra={"step": step_id, "reason": reason, "error": error, "dlq_id": dlq_id},
+        )
         return Outcome.DEAD_LETTERED
 
     @staticmethod
