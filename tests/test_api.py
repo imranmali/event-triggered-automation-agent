@@ -5,12 +5,12 @@ from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-from tests.conftest import FAST_RETRY
 
 from eta.api.app import create_app
 from eta.ingress.signatures import sign_hmac_sha256, sign_stripe
 from eta.models import RunStatus
 from eta.runtime import Runtime
+from tests.conftest import FAST_RETRY
 
 SOURCES = {
     "github": {

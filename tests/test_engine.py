@@ -5,7 +5,6 @@ import json
 from datetime import timedelta
 
 import httpx
-from tests.conftest import FAST_RETRY, make_config
 
 from eta.actions import ActionRegistry
 from eta.actions.builtin import register_builtins
@@ -15,6 +14,7 @@ from eta.engine.worker import Worker, WorkerConfig
 from eta.errors import PermanentError, RetryableError
 from eta.models import DeadLetterStatus, RunStatus, StepStatus, utcnow
 from eta.runtime import Runtime
+from tests.conftest import FAST_RETRY, make_config
 
 API = "https://api.example.com/hook"
 

@@ -31,7 +31,7 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
-    "ruff>=0.4",
+    "ruff==0.17.1",
     "mypy>=1.9",
     "types-PyYAML",
 ]
@@ -67,6 +67,9 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["prometheus_client.*"]
 ignore_missing_imports = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["eta", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E501"]
