@@ -25,7 +25,7 @@ from eta.engine.executor import ExecutionState, Executor, Outcome
 from eta.errors import LeaseLostError
 from eta.logs import log_context
 from eta.models import ClaimedRun
-from eta.workflows.spec import WorkflowSpec
+from eta.workflows.spec import workflow_from_snapshot
 
 log = logging.getLogger(__name__)
 
@@ -227,7 +227,7 @@ class Worker:
         return recovered
 
     async def _recover(self, lease: ExpiredLease) -> None:
-        wf = WorkflowSpec.model_validate(lease.workflow.spec)
+        wf = workflow_from_snapshot(lease.workflow.spec)
         policy = wf.retry_for(lease.current_step)
         error = (
             f"lease expired: worker {lease.lease_owner} lost "

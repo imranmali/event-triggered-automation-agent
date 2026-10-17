@@ -1,0 +1,73 @@
+# Full stack: Postgres + Redis + API + 2 workers + queue consumer + mock downstream.
+#   docker compose up --build
+#   python scripts/send_webhook.py github-push
+x-eta: &eta
+  build: .
+  image: event-triggered-automation-agent:latest
+  restart: unless-stopped
+  environment: &eta-env
+    ETA_DATABASE_URL: postgresql+asyncpg://eta:eta@postgres:5432/eta
+    ETA_REDIS_URL: redis://redis:6379/0
+    ETA_ADMIN_TOKEN: ${ETA_ADMIN_TOKEN:-change-me}
+    ETA_LOG_JSON: "true"
+    GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-dev-github-secret}
+    STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_dev}
+    GENERIC_WEBHOOK_SECRET: ${GENERIC_WEBHOOK_SECRET:-dev-generic-secret}
+    ETA_SECRET_NOTIFY_URL: http://downstream:9000/notify
+    ETA_SECRET_FULFILLMENT_URL: http://downstream:9000/fulfil
+  depends_on:
+    migrate: { condition: service_completed_successfully }
+    redis: { condition: service_healthy }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: eta, POSTGRES_PASSWORD: eta, POSTGRES_DB: eta }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eta"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+
+  migrate:
+    <<: *eta
+    restart: "no"
+    command: ["db", "upgrade"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *eta
+    command: ["serve"]
+    ports: ["8080:8080"]
+
+  worker:
+    <<: *eta
+    command: ["worker"]
+    deploy: { replicas: 2 }
+    stop_grace_period: 40s
+    environment:
+      <<: *eta-env
+      ETA_WORKER_CONCURRENCY: "8"
+
+  consumer:
+    <<: *eta
+    command: ["consume"]
+
+  downstream:
+    image: python:3.12-slim
+    command: ["python", "/mock_downstream.py", "--port", "9000"]
+    environment: { FAIL_RATE: "0.3" }
+    volumes: ["./scripts/mock_downstream.py:/mock_downstream.py:ro"]
+    ports: ["9000:9000"]
+
+volumes:
+  pgdata:

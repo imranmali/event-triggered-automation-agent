@@ -51,7 +51,11 @@ class Runtime:
         if actions is default_registry:
             load_plugins(settings.plugin_module_list)
         config = config or load_config(settings.config_dir, actions, environ=environ)
-        store = store or Store.from_url(settings.database_url, pool_size=settings.db_pool_size)
+        store = store or Store.from_url(
+            settings.database_url,
+            pool_size=settings.db_pool_size,
+            pre_ping=settings.db_pool_pre_ping,
+        )
         http = http or httpx.AsyncClient(follow_redirects=False)
         ingest = IngestService(store, config.workflows)
         executor = Executor(

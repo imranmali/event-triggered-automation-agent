@@ -31,7 +31,7 @@ from eta.actions.base import ActionContext, ActionRegistry, EmitFn
 from eta.db.store import Store
 from eta.errors import LeaseLostError, PermanentError, RetryableError, StepError
 from eta.models import ClaimedRun, StepStatus
-from eta.workflows.spec import StepSpec, WorkflowSpec
+from eta.workflows.spec import StepSpec, WorkflowSpec, workflow_from_snapshot
 from eta.workflows.templating import evaluate_condition, render
 
 log = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ class Executor:
     async def execute(self, claimed: ClaimedRun, state: ExecutionState | None = None) -> Outcome:
         state = state or ExecutionState()
         run, token = claimed.run, claimed.lease_token
-        wf = WorkflowSpec.model_validate(claimed.workflow.spec)
+        wf = workflow_from_snapshot(claimed.workflow.spec)
         context = self._context(claimed, wf)
 
         for step in wf.steps:

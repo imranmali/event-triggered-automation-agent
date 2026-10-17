@@ -61,7 +61,9 @@ class ExpiredLease:
     step_attempts: int
 
 
-def create_engine(url: str, *, pool_size: int = 10, echo: bool = False) -> AsyncEngine:
+def create_engine(
+    url: str, *, pool_size: int = 10, pre_ping: bool = True, echo: bool = False
+) -> AsyncEngine:
     if url.startswith("sqlite"):
         engine = create_async_engine(url, echo=echo, connect_args={"timeout": 30})
 
@@ -84,7 +86,7 @@ def create_engine(url: str, *, pool_size: int = 10, echo: bool = False) -> Async
 
         return engine
     return create_async_engine(
-        url, echo=echo, pool_size=pool_size, max_overflow=pool_size, pool_pre_ping=True
+        url, echo=echo, pool_size=pool_size, max_overflow=pool_size, pool_pre_ping=pre_ping
     )
 
 
@@ -95,8 +97,10 @@ class Store:
         self.dialect = engine.dialect.name
 
     @classmethod
-    def from_url(cls, url: str, *, pool_size: int = 10, clock: Clock = utcnow) -> Store:
-        return cls(create_engine(url, pool_size=pool_size), clock=clock)
+    def from_url(
+        cls, url: str, *, pool_size: int = 10, pre_ping: bool = True, clock: Clock = utcnow
+    ) -> Store:
+        return cls(create_engine(url, pool_size=pool_size, pre_ping=pre_ping), clock=clock)
 
     async def create_all(self) -> None:
         """Create tables directly (tests/dev). Production uses ``eta db upgrade``."""
@@ -116,6 +120,7 @@ class Store:
             yield conn
 
     def _insert_ignore(self, table: Table) -> Any:
+        """Dialect-specific INSERT supporting ON CONFLICT clauses."""
         dialect_insert = postgresql.insert if self.dialect == "postgresql" else sqlite.insert
         return dialect_insert(table)
 
@@ -347,35 +352,27 @@ class Store:
         now = self.clock()
         async with self.tx() as conn:
             await self._fence(conn, run_id, token, current_step=step_id)
-            existing = (
-                await conn.execute(
-                    select(t.step_results.c.attempts).where(
-                        t.step_results.c.run_id == run_id, t.step_results.c.step_id == step_id
-                    )
+            upsert = (
+                self._insert_ignore(t.step_results)
+                .values(
+                    run_id=run_id,
+                    step_id=step_id,
+                    status=StepStatus.RUNNING,
+                    attempts=1,
+                    started_at=now,
                 )
-            ).scalar_one_or_none()
-            attempts = (existing or 0) + 1
-            if existing is None:
-                await conn.execute(
-                    insert(t.step_results).values(
-                        run_id=run_id,
-                        step_id=step_id,
-                        status=StepStatus.RUNNING,
-                        attempts=attempts,
-                        started_at=now,
-                    )
+                .on_conflict_do_update(
+                    index_elements=["run_id", "step_id"],
+                    set_={
+                        "status": StepStatus.RUNNING,
+                        "attempts": t.step_results.c.attempts + 1,
+                        "started_at": now,
+                        "finished_at": None,
+                    },
                 )
-            else:
-                await conn.execute(
-                    update(t.step_results)
-                    .where(t.step_results.c.run_id == run_id, t.step_results.c.step_id == step_id)
-                    .values(
-                        status=StepStatus.RUNNING,
-                        attempts=attempts,
-                        started_at=now,
-                        finished_at=None,
-                    )
-                )
+                .returning(t.step_results.c.attempts)
+            )
+            attempts = int((await conn.execute(upsert)).scalar_one())
             await self._history(
                 conn, run_id, "step_started", {"step": step_id, "attempt": attempts}
             )

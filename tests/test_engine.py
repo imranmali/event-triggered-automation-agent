@@ -500,13 +500,16 @@ async def test_heartbeat_loss_cancels_execution(make_runtime):
                 steps=[{"id": "slow", "action": "delay", "timeout": "10s", "with": {"seconds": 3}}]
             )
         ],
-        lease_seconds=0.3,
+        lease_seconds=5,
         heartbeat_interval=0.1,
     )
     [run_id] = (await publish(rt)).run_ids
     stop = asyncio.Event()
     task = asyncio.create_task(rt.worker.run(stop))
-    await asyncio.sleep(0.15)
+    for _ in range(100):  # wait until the worker is inside the slow step
+        if (await rt.store.get_run(run_id)).current_step == "slow":
+            break
+        await asyncio.sleep(0.02)
     # Simulate another worker stealing the run (e.g. after a network partition).
     from sqlalchemy import update
 
@@ -514,8 +517,12 @@ async def test_heartbeat_loss_cancels_execution(make_runtime):
 
     async with rt.store.tx() as conn:
         await conn.execute(update(t.runs).where(t.runs.c.id == run_id).values(lease_token="stolen"))
-    await asyncio.sleep(0.3)
-    assert rt.worker.inflight == 0  # execution was abandoned promptly
+    for _ in range(100):
+        if rt.worker.inflight == 0:
+            break
+        await asyncio.sleep(0.02)
+    assert rt.worker.inflight == 0  # abandoned well before the 3s step would finish
+    assert (await rt.store.get_run(run_id)).status == RunStatus.RUNNING  # untouched by us
     stop.set()
     await task
 
@@ -532,7 +539,10 @@ async def test_graceful_shutdown_releases_inflight_runs(make_runtime):
     [run_id] = (await publish(rt)).run_ids
     stop = asyncio.Event()
     task = asyncio.create_task(rt.worker.run(stop))
-    await asyncio.sleep(0.2)
+    for _ in range(100):
+        if (await rt.store.get_run(run_id)).current_step == "slow":
+            break
+        await asyncio.sleep(0.02)
     assert rt.worker.inflight == 1
     stop.set()
     await asyncio.wait_for(task, 3)

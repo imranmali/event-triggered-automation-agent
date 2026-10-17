@@ -9,11 +9,12 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from typing import Any
 
-from jinja2 import StrictUndefined, TemplateError, Undefined
+from jinja2 import StrictUndefined, Template, TemplateError, Undefined
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from eta.errors import ConfigError, PermanentError
@@ -44,6 +45,18 @@ def _make_env() -> ImmutableSandboxedEnvironment:
 _env = _make_env()
 
 
+# Workflow templates are a small, fixed set: compile each once, not per render.
+@functools.lru_cache(maxsize=4096)
+def _compiled_expression(expr: str) -> Any:
+    return _env.compile_expression(expr, undefined_to_none=False)
+
+
+@functools.lru_cache(maxsize=4096)
+def _compiled_template(source: str) -> Template:
+    return _env.from_string(source)
+
+
+@functools.lru_cache(maxsize=4096)
 def _is_single_expression(text: str) -> str | None:
     m = _SINGLE_EXPR.match(text)
     if m and "{{" not in m.group("expr") and "{%" not in text:
@@ -65,11 +78,11 @@ def _render(value: Any, context: dict[str, Any]) -> Any:
             return value
         expr = _is_single_expression(value)
         if expr is not None:
-            result = _env.compile_expression(expr, undefined_to_none=False)(**context)
+            result = _compiled_expression(expr)(**context)
             if isinstance(result, Undefined):
                 str(result)  # StrictUndefined raises UndefinedError here
             return result
-        return _env.from_string(value).render(**context)
+        return _compiled_template(value).render(**context)
     if isinstance(value, dict):
         return {_render(k, context): _render(v, context) for k, v in value.items()}
     if isinstance(value, list):

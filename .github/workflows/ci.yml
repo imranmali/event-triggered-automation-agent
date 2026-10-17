@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests scripts
+      - run: ruff format --check src tests scripts
+      - run: mypy
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: eta, POSTGRES_PASSWORD: eta, POSTGRES_DB: eta_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U eta" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+    env:
+      ETA_TEST_DATABASE_URL: postgresql+asyncpg://eta:eta@localhost:5432/eta_test
+      ETA_TEST_REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python-version }}", cache: pip }
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t eta:ci .
+      - run: docker run --rm -e GITHUB_WEBHOOK_SECRET=x -e STRIPE_WEBHOOK_SECRET=x -e GENERIC_WEBHOOK_SECRET=x eta:ci validate

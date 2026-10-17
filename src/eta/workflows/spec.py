@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import random
@@ -237,3 +238,13 @@ class SourceSpec(_Model):
     idempotency_key: ExtractSpec | None = Field(
         default=None, description="Falls back to a SHA-256 of the raw body when unset/missing"
     )
+
+
+@functools.lru_cache(maxsize=1024)
+def _parse_workflow_json(canonical: str) -> WorkflowSpec:
+    return WorkflowSpec.model_validate(json.loads(canonical))
+
+
+def workflow_from_snapshot(spec: dict[str, Any]) -> WorkflowSpec:
+    """Parse a stored (pinned) workflow snapshot, memoised by content."""
+    return _parse_workflow_json(json.dumps(spec, sort_keys=True, separators=(",", ":")))

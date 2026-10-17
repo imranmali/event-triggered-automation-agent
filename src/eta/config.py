@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Storage
     database_url: str = "sqlite+aiosqlite:///./eta.db"
     db_pool_size: int = 10
+    # Validates pooled connections before use (survives DB restarts/failovers)
+    # at ~0.3 ms CPU per transaction. Disable for maximum throughput.
+    db_pool_pre_ping: bool = True
 
     # Declarative configuration
     config_dir: Path = Path("./config")
