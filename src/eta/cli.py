@@ -31,7 +31,20 @@ def _run(coro_fn: Callable[[], Awaitable[T]]) -> T:
         raise click.ClickException(f"configuration error: {exc}") from exc
 
 
+def _load_dotenv() -> None:
+    """Export ``.env`` into the process environment (without overriding).
+
+    Settings read ``ETA_*`` keys themselves, but webhook signing secrets
+    (``secret_env``) and ``ETA_SECRET_*`` template secrets are read from
+    ``os.environ``.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv(".env", override=False)
+
+
 def _settings() -> Settings:
+    _load_dotenv()
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
     return settings
@@ -157,6 +170,7 @@ def validate() -> None:
     from eta.actions import default_registry, load_plugins
     from eta.workflows.registry import load_config
 
+    _load_dotenv()
     settings = get_settings()
     try:
         load_plugins(settings.plugin_module_list)

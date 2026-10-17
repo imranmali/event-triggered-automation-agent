@@ -44,17 +44,17 @@ Non-goals (v1): a visual workflow editor, long-running durable timers
 
 | #  | Milestone                                                        | Status |
 | -- | ---------------------------------------------------------------- | ------ |
-| M0 | Plan, repo skeleton, tooling (ruff, mypy, pytest, CI)            | ⏳     |
-| M1 | Domain model, schema, store with leasing/fencing, migrations     | ⏳     |
-| M2 | Workflow DSL: spec, loader, trigger matcher, templating          | ⏳     |
-| M3 | Actions: http_request, transform, log, emit_event, delay, fail, python plugins | ⏳ |
-| M4 | Execution engine: executor w/ checkpoints, retry policy, worker (concurrency, heartbeats, reaper, graceful shutdown) | ⏳ |
-| M5 | Ingress: webhook endpoint + signature verification, ingest service, Redis Streams consumer | ⏳ |
-| M6 | Dead-letter queue: park, inspect, replay (resume/restart), discard, bulk replay | ⏳ |
-| M7 | Admin API, metrics, structured logging, health/readiness, CLI    | ⏳     |
-| M8 | Test suite: unit + integration + failure-injection (crash, zombie worker, concurrency, duplicate delivery) | ⏳ |
-| M9 | Packaging: Dockerfile, docker-compose (Postgres + Redis), example configs, demo script | ⏳ |
-| M10| Documentation: README, architecture, workflow reference, operations runbook, ADRs | ⏳ |
+| M0 | Plan, repo skeleton, tooling (ruff, mypy, pytest, CI)            | ✅     |
+| M1 | Domain model, schema, store with leasing/fencing, migrations     | ✅     |
+| M2 | Workflow DSL: spec, loader, trigger matcher, templating          | ✅     |
+| M3 | Actions: http_request, transform, log, emit_event, delay, fail, python plugins | ✅ |
+| M4 | Execution engine: executor w/ checkpoints, retry policy, worker (concurrency, heartbeats, reaper, graceful shutdown) | ✅ |
+| M5 | Ingress: webhook endpoint + signature verification, ingest service, Redis Streams consumer | ✅ |
+| M6 | Dead-letter queue: park, inspect, replay (resume/restart), discard, bulk replay | ✅ |
+| M7 | Admin API, metrics, structured logging, health/readiness, CLI    | ✅     |
+| M8 | Test suite: unit + integration + failure-injection (crash, zombie worker, concurrency, duplicate delivery) | ✅ |
+| M9 | Packaging: Dockerfile, docker-compose (Postgres + Redis), example configs, demo script | ✅ |
+| M10| Documentation: README, architecture, workflow reference, operations runbook, ADRs | ✅ |
 
 ## 4. Delivery semantics (contract)
 
@@ -89,7 +89,37 @@ Non-goals (v1): a visual workflow editor, long-running durable timers
 | Template injection / secret leakage    | Immutable sandboxed Jinja2, explicit `secrets` namespace, secrets redacted in logs |
 | Retry storms                           | Full jitter, max delay cap, `Retry-After`, per-step policies                 |
 
-## 7. Future work
+## 7. Results
+
+All milestones are delivered and verified:
+
+* **217 automated tests**, run against SQLite and Postgres 16 plus a real
+  `redis-server`. Strict `mypy`, `ruff` lint and formatting are enforced in CI.
+* **End-to-end run** of the real server (`eta serve --worker --consumers`)
+  against a mock downstream that failed 40% of requests:
+  * A duplicate GitHub delivery returned `200 duplicate` and created no new run.
+  * A duplicate Redis order created one run.
+  * Runs retried up to 4 times and then succeeded.
+  * Stripe triggered the chained `order.paid` workflow.
+  * A poison event landed in the DLQ and was replayed with `restart` from the CLI.
+  * The downstream saw exactly one effect per run (4 calls for 4 unique
+    idempotency keys).
+  * SIGTERM drained the worker and stopped the consumer cleanly.
+* **Benchmark**: 57 → 92 → 139 three-step runs/s with 1 → 2 → 4 worker
+  processes, with Postgres on the same 4-vCPU VM, and every run executed exactly
+  once.
+
+Defects that testing surfaced and that are now fixed:
+
+| Defect | Found by | Fix |
+| --- | --- | --- |
+| Postgres claim with `IN (SELECT … LIMIT n FOR UPDATE SKIP LOCKED)` could claim more than `n` rows | Store tests on Postgres | `MATERIALIZED` CTE (ADR-0001) |
+| `{{ payload.items }}` resolved to the `dict.items` method | Templating tests | Environment prefers mapping keys |
+| Undefined variable in a single-expression template returned an `Undefined` object instead of failing | Engine tests | Explicit check that raises a permanent error |
+| Every render recompiled Jinja templates | Profiling | LRU-cached compiled templates and parsed workflow snapshots |
+| `.env` secrets didn't reach `os.environ` | Running the README quickstart as written | CLI loads `.env` into the environment |
+
+## 8. Future work
 
 * SQS / Kafka / RabbitMQ ingress adapters (interface already exists).
 * Postgres `LISTEN/NOTIFY` wake-ups to cut idle polling latency.
